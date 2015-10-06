@@ -55,7 +55,7 @@ def get_current_data_from_ford():
         'time': datetime.datetime.now(),
         'dte':km_to_miles(data['ELECTRICDTE']),
         'odometer':km_to_miles(data['ODOMETER']),
-        'soc':int(data['stateOfCharge']),
+        'soc':float(data['stateOfCharge']),
         'latlong': str(",".join([data['LATITUDE'],data['LONGITUDE']]))
     }
 
@@ -108,8 +108,12 @@ def save_to_s3(filename,data):
     k.content_type = 'image/svg+xml'
     k.set_metadata('Content-Type', 'image/svg+xml')
 
-    k.set_contents_from_string(data)
-    k.set_acl('public-read')
+    try:
+        k.set_contents_from_string(data)
+        k.set_acl('public-read')
+    except boto.exception.S3ResponseError as e:
+        logger.critical("BAD RESPONSE FROM Object: {}".format(e))
+
     return k
 
 def push_to_mongo(data):
@@ -148,7 +152,7 @@ if __name__ == "__main__":
         try:
             save_to_s3("odometer.svg",get_all_data())
         except:
-            raise
+            pass
         time.sleep(3600)
 
 
