@@ -1,1 +1,1 @@
-worker: python mileage.py
+web: python mileage.py
