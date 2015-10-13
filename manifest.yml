@@ -1,8 +1,0 @@
----
-applications:
-- name: mileagetracker
-  memory: 64M
-  no-route: true
-  instances: 1
-  buildpack: python_buildpack
-  command: python mileage.py
