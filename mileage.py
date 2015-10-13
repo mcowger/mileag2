@@ -3,26 +3,26 @@ __author__ = 'mcowger'
 import logging
 
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s: %(levelname)s:%(funcName)s:%(module)s: %(message)s")
-logger = logging.getLogger("")
+logging.basicConfig(level=logging.WARNING, format="%(asctime)s: %(levelname)s:%(funcName)s:%(module)s: %(message)s")
+logger = logging.getLogger()
 logging.getLogger("requests.packages.urllib3.connectionpool").setLevel(logging.WARN)
 
 
 
 import requests
-import time
 import json
 import pygal
 import datetime
 import time
-import boto
 from pprint import pprint
-from boto.s3.key import Key
-from options import *
-from boto.dynamodb2.table import Table
-connection=boto.dynamodb2.connect_to_region('us-east-1')
-mileage_table = Table('mileage')
 
+import boto3
+from options import *
+
+session = boto3.session.Session(aws_access_key_id=S3_AKIA, aws_secret_access_key=S3_SECRET, region_name='us-east-1')
+dynamodb = session.resource('dynamodb')
+mileage_table = dynamodb.Table('mileage')
+s3 = session.resource('s3')
 
 def km_to_miles(km):
     return int(float(km) * 0.621371)
@@ -64,6 +64,7 @@ def get_current_data_from_ford():
     }
 
     logger.info(chopped)
+    print(chopped)
     return chopped
 
 def get_all_data():
@@ -82,9 +83,11 @@ def get_all_data():
 
     line_chart.title = "odometer over time"
     dates = []
-    for datapoint in data:
 
-        #pprint(dict(datapoint))
+
+    for datapoint in data['Items']:
+
+        #pprint(datapoint)
         dates.append(
             (
                 datetime.datetime.fromtimestamp(datapoint['time']),
@@ -103,37 +106,30 @@ def get_all_data():
 
 
 def save_to_s3(filename,data):
-    s3conn = boto.connect_s3(S3_AKIA, S3_SECRET) #set up an S3 style connections
-    bucket = s3conn.get_bucket(S3_BUCKET)
-    k = Key(bucket)
-    k.key = filename
-    k.content_type = 'image/svg+xml'
-    k.set_metadata('Content-Type', 'image/svg+xml')
 
     try:
-        k.set_contents_from_string(data)
-        k.set_acl('public-read')
-    except boto.exception.S3ResponseError as e:
+
+        s3_object = s3.Object(S3_BUCKET, filename).put(Body=data, ContentType='image/svg+xml', ACL='public-read')
+
+
+    except Exception as e:
         logger.critical("BAD RESPONSE FROM Object: {}".format(e))
 
-    return k
+    return s3_object
 
 def push_to_db(data):
 
     try:
-        mileage_table.put_item(data)
+
+        mileage_table.put_item(Item=data)
 
     except:
         raise
 
 
-
 def lambda_handler(event=None, context=None):
         try:
             push_to_db(get_current_data_from_ford())
-
-            #get_all_data()
-
             save_to_s3("odometer.svg",get_all_data())
         except Exception as e:
             raise(e)

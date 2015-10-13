@@ -1,7 +1,5 @@
-MonthDelta==1.0b
-boto==2.38.0
+
 pygal==1.5.1
-pymongo==3.0.3
-python-dateutil==2.4.2
 requests==2.7.0
 wsgiref==0.1.2
+boto3

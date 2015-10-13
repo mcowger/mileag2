@@ -1,5 +1,8 @@
 options.py
 .idea/
+.boto
+import_old.py
+*.zip
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
