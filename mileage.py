@@ -8,17 +8,20 @@ logger = logging.getLogger("")
 logging.getLogger("requests.packages.urllib3.connectionpool").setLevel(logging.WARN)
 
 
-import pymongo
-import os, sys
+
 import requests
 import time
 import json
 import pygal
 import datetime
-from pprint import pprint
+import time
 import boto
+from pprint import pprint
 from boto.s3.key import Key
 from options import *
+from boto.dynamodb2.table import Table
+connection=boto.dynamodb2.connect_to_region('us-east-1')
+mileage_table = Table('mileage')
 
 
 def km_to_miles(km):
@@ -53,10 +56,10 @@ def get_current_data_from_ford():
 
 
     chopped = {
-        'time': datetime.datetime.now(),
+        'time': int(float(time.time())),
         'dte':km_to_miles(data['ELECTRICDTE']),
         'odometer':km_to_miles(data['ODOMETER']),
-        'soc':float(data['stateOfCharge']),
+        'soc':int(float(data['stateOfCharge'])),
         'latlong': str(",".join([data['LATITUDE'],data['LONGITUDE']]))
     }
 
@@ -64,14 +67,8 @@ def get_current_data_from_ford():
     return chopped
 
 def get_all_data():
-    try:
-        client = pymongo.MongoClient(host=MONGODB)
-        database = client.get_database("iot-data")
-        database.authenticate(MONGO_USER,MONGO_PASS)
-        collection = database.get_collection("mileage")
-    except:
-        raise
-    data = collection.find().sort("time",1)
+
+    data = mileage_table.scan()
     line_chart = pygal.DateY(
         x_label_rotation=20,
         fill=True,
@@ -86,17 +83,24 @@ def get_all_data():
     line_chart.title = "odometer over time"
     dates = []
     for datapoint in data:
+
+        #pprint(dict(datapoint))
         dates.append(
             (
-                datapoint['time'],
+                datetime.datetime.fromtimestamp(datapoint['time']),
                 float(datapoint['odometer'])
             )
         )
 
+
+    dates.sort(key=lambda tup: tup[0])
+    #pprint(dates)
+
     line_chart.add("Odometer",dates)
-    client.close()
 
     return line_chart.render()
+
+
 
 def save_to_s3(filename,data):
     s3conn = boto.connect_s3(S3_AKIA, S3_SECRET) #set up an S3 style connections
@@ -114,27 +118,22 @@ def save_to_s3(filename,data):
 
     return k
 
-def push_to_mongo(data):
-    try:
-        client = pymongo.MongoClient(host=MONGODB)
-        database = client.get_database("iot-data")
-        database.authenticate(MONGO_USER,MONGO_PASS)
-        collection = database.get_collection("mileage")
-    except:
-        raise
+def push_to_db(data):
 
     try:
-        collection.insert_one(data)
+        mileage_table.put_item(data)
 
     except:
         raise
 
-    client.close()
 
 
 def lambda_handler(event=None, context=None):
         try:
-            push_to_mongo(get_current_data_from_ford())
+            push_to_db(get_current_data_from_ford())
+
+            #get_all_data()
+
             save_to_s3("odometer.svg",get_all_data())
         except Exception as e:
             raise(e)
